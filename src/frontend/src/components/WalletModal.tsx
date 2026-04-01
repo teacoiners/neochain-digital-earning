@@ -175,6 +175,8 @@ export default function WalletModal({
         id,
         ifsc: ifsc || "",
         branch: branch || "",
+        bank: isBankMethod(method) ? method : "",
+        amount: amount,
       });
       await withdraw.mutateAsync({
         amount: amountBig,
@@ -185,8 +187,29 @@ export default function WalletModal({
         "Withdrawal request submitted! Admin will process it shortly.",
       );
       setWFields(EMPTY_WITHDRAW);
-    } catch {
-      toast.error("Withdrawal failed. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Insufficient balance")) {
+        toast.error(
+          "Insufficient balance. Please check your available balance.",
+        );
+      } else if (
+        msg.includes("not found") ||
+        msg.includes("User not found") ||
+        msg.includes("profile not found")
+      ) {
+        toast.error(
+          "Please complete your profile registration first before withdrawing.",
+        );
+      } else if (msg.includes("Unauthorized")) {
+        toast.error("Session expired. Please refresh and login again.");
+      } else if (msg.includes("Not connected")) {
+        toast.error("Please login first to withdraw.");
+      } else if (msg.includes("not registered")) {
+        toast.error("Please complete registration before withdrawing.");
+      } else {
+        toast.error(`Withdrawal failed: ${msg.slice(0, 80)}`);
+      }
     }
   };
 

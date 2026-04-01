@@ -4,6 +4,7 @@ import {
   CreditCard,
   Eye,
   Loader2,
+  MessageCircle,
   Plus,
   ShieldCheck,
   Target,
@@ -21,6 +22,7 @@ import type { PaymentMethod, Transaction } from "../backend.d";
 import { Switch } from "../components/ui/switch";
 import {
   useAddPaymentMethod,
+  useAllSupportTickets,
   useAllTransactions,
   useAllUsers,
   useApproveTransaction,
@@ -28,6 +30,8 @@ import {
   usePlatformStats,
   useRejectTransaction,
   useRemovePaymentMethod,
+  useReplyToTicket,
+  useResolveTicket,
   useUpdateUserBalance,
   useUpdateUserRole,
 } from "../hooks/useQueries";
@@ -49,7 +53,9 @@ type AdminTab =
   | "deposits"
   | "withdrawals"
   | "payments"
-  | "ads";
+  | "ads"
+  | "support"
+  | "health";
 
 interface AdTask {
   id: string;
@@ -169,7 +175,8 @@ function TxDetailModal({
     }
   }
 
-  const isDeposit = parsedNotes?.type === "deposit";
+  const isDepositOrPurchase =
+    parsedNotes?.type === "deposit" || parsedNotes?.type === "plan_purchase";
   const isWithdrawal =
     parsedNotes?.type === "withdrawal" || String(tx.txType) === "withdrawal";
 
@@ -231,16 +238,28 @@ function TxDetailModal({
             <StatusBadge status={String(tx.status)} />
           </div>
 
-          {/* Deposit-specific fields */}
-          {isDeposit && parsedNotes && (
+          {/* Deposit/Plan Purchase-specific fields */}
+          {isDepositOrPurchase && parsedNotes && (
             <>
               {parsedNotes.name && (
                 <DetailRow label="Name" value={parsedNotes.name} />
               )}
-              {parsedNotes.txId && (
+              {(parsedNotes.txId || parsedNotes.txnId) && (
                 <DetailRow
                   label="Transaction ID (User)"
-                  value={parsedNotes.txId}
+                  value={parsedNotes.txnId || parsedNotes.txId || "—"}
+                />
+              )}
+              {parsedNotes.paymentMethod && (
+                <DetailRow
+                  label="Payment Method Used"
+                  value={parsedNotes.paymentMethod}
+                />
+              )}
+              {parsedNotes.amount && (
+                <DetailRow
+                  label="Plan Amount"
+                  value={`₹${Number(parsedNotes.amount).toLocaleString("en-IN")}`}
                 />
               )}
               {/* Screenshot */}
@@ -271,6 +290,19 @@ function TxDetailModal({
           {/* Withdrawal-specific fields */}
           {isWithdrawal && (
             <>
+              <p
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  color: "rgba(38,214,255,0.9)",
+                  marginTop: 16,
+                  marginBottom: 4,
+                }}
+              >
+                Withdrawal Account Details
+              </p>
               <DetailRow
                 label="Payment Method"
                 value={parsedNotes?.method || tx.paymentMethod || "—"}
@@ -292,6 +324,15 @@ function TxDetailModal({
               )}
               {parsedNotes?.branch && (
                 <DetailRow label="Branch Name" value={parsedNotes.branch} />
+              )}
+              {parsedNotes?.bank && (
+                <DetailRow label="Bank Name" value={parsedNotes.bank} />
+              )}
+              {parsedNotes?.amount && (
+                <DetailRow
+                  label="Requested Amount"
+                  value={`₹${Number(parsedNotes.amount).toLocaleString("en-IN")}`}
+                />
               )}
             </>
           )}
@@ -408,7 +449,17 @@ function QrMethodCard({
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const base64 = ev.target?.result as string;
-      await handleUpdateMethod(methodName, { qrBase64: base64 });
+      try {
+        await handleUpdateMethod(methodName, { qrBase64: base64 });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`QR upload failed: ${msg}`);
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file. Please try again.");
       setUploading(false);
     };
     reader.readAsDataURL(file);
@@ -991,9 +1042,333 @@ function TxTable({
   );
 }
 
+function SupportTicketsTab() {
+  const { data: tickets, isLoading, refetch } = useAllSupportTickets();
+  const replyToTicket = useReplyToTicket();
+  const resolveTicket = useResolveTicket();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
+
+  const handleReply = async (ticketId: bigint) => {
+    const key = String(ticketId);
+    const reply = replyInputs[key]?.trim();
+    if (!reply) return;
+    try {
+      await replyToTicket.mutateAsync({ ticketId, reply });
+      toast.success("Reply sent!");
+      setReplyInputs((prev) => ({ ...prev, [key]: "" }));
+    } catch {
+      toast.error("Failed to send reply");
+    }
+  };
+
+  const handleResolve = async (ticketId: bigint) => {
+    try {
+      await resolveTicket.mutateAsync(ticketId);
+      toast.success("Ticket resolved!");
+    } catch {
+      toast.error("Failed to resolve ticket");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2
+          className="w-8 h-8 animate-spin"
+          style={{ color: "oklch(0.75 0.2 280)" }}
+        />
+      </div>
+    );
+  }
+
+  const sortedTickets = [...(tickets || [])].sort(
+    (a, b) => Number(b.ticketId) - Number(a.ticketId),
+  );
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="mb-4 flex items-center gap-2">
+        <MessageCircle
+          className="w-5 h-5"
+          style={{ color: "oklch(0.75 0.2 280)" }}
+        />
+        <h2
+          className="text-lg font-bold"
+          style={{ color: "oklch(0.96 0.01 280)" }}
+        >
+          Support Tickets
+        </h2>
+        <span
+          className="text-sm px-2 py-0.5 rounded-full"
+          style={{
+            background: "rgba(123,77,255,0.2)",
+            color: "oklch(0.75 0.2 280)",
+          }}
+        >
+          {sortedTickets.length} total
+        </span>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="ml-auto text-xs px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            background: "rgba(123,77,255,0.15)",
+            border: "1px solid rgba(123,77,255,0.35)",
+            color: "oklch(0.75 0.2 280)",
+          }}
+          data-ocid="support.button"
+        >
+          &#x21bb; Refresh
+        </button>
+      </div>
+
+      {sortedTickets.length === 0 ? (
+        <div
+          className="text-center py-16"
+          style={{ color: "oklch(0.5 0.05 280)" }}
+          data-ocid="support.empty_state"
+        >
+          <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>Koi support ticket nahi mila</p>
+        </div>
+      ) : (
+        <div className="space-y-3" data-ocid="support.list">
+          {sortedTickets.map((ticket, idx) => {
+            const key = String(ticket.ticketId);
+            const isExpanded = expandedId === key;
+            const isResolved = ticket.status === "resolved";
+            const createdDate = new Date(
+              Number(ticket.createdAt) / 1_000_000,
+            ).toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+            return (
+              <div
+                key={key}
+                className="rounded-xl overflow-hidden"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(123,77,255,0.2)",
+                }}
+                data-ocid={`support.item.${idx + 1}`}
+              >
+                {/* Row */}
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors text-left"
+                  onClick={() => setExpandedId(isExpanded ? null : key)}
+                >
+                  <span
+                    className="text-xs font-mono font-bold w-16 shrink-0"
+                    style={{ color: "oklch(0.75 0.2 280)" }}
+                  >
+                    #{key}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-sm font-medium truncate"
+                      style={{ color: "oklch(0.9 0.05 280)" }}
+                    >
+                      {ticket.guestName || "Anonymous"}
+                    </p>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: "oklch(0.55 0.05 280)" }}
+                    >
+                      {ticket.problemSummary}
+                    </p>
+                  </div>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full shrink-0 font-medium"
+                    style={{
+                      background: isResolved
+                        ? "rgba(0,200,100,0.15)"
+                        : "rgba(255,180,0,0.15)",
+                      color: isResolved
+                        ? "oklch(0.75 0.15 150)"
+                        : "oklch(0.85 0.15 80)",
+                    }}
+                  >
+                    {isResolved ? "Resolved" : "Open"}
+                  </span>
+                  <span
+                    className="text-xs shrink-0"
+                    style={{ color: "oklch(0.5 0.05 280)" }}
+                  >
+                    {createdDate}
+                  </span>
+                </button>
+
+                {/* Expanded */}
+                {isExpanded && (
+                  <div
+                    className="px-4 pb-4 space-y-3"
+                    style={{ borderTop: "1px solid rgba(123,77,255,0.1)" }}
+                  >
+                    <div className="pt-3">
+                      <p
+                        className="text-xs font-semibold mb-1"
+                        style={{ color: "oklch(0.6 0.1 280)" }}
+                      >
+                        User Info
+                      </p>
+                      <p
+                        className="text-sm"
+                        style={{ color: "oklch(0.85 0.05 280)" }}
+                      >
+                        Name: {ticket.guestName || "—"}{" "}
+                        {ticket.guestEmail
+                          ? `| Email: ${ticket.guestEmail}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p
+                        className="text-xs font-semibold mb-1"
+                        style={{ color: "oklch(0.6 0.1 280)" }}
+                      >
+                        Problem Summary
+                      </p>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "oklch(0.85 0.05 280)" }}
+                      >
+                        {ticket.problemSummary}
+                      </p>
+                    </div>
+                    {ticket.adminReply && (
+                      <div
+                        className="p-2 rounded-lg"
+                        style={{
+                          background: "rgba(0,210,255,0.05)",
+                          border: "1px solid rgba(0,210,255,0.2)",
+                        }}
+                      >
+                        <p
+                          className="text-xs font-semibold mb-1"
+                          style={{ color: "oklch(0.75 0.15 200)" }}
+                        >
+                          Admin Reply
+                        </p>
+                        <p
+                          className="text-sm"
+                          style={{ color: "oklch(0.85 0.1 200)" }}
+                        >
+                          {ticket.adminReply}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <p
+                        className="text-xs font-semibold mb-1"
+                        style={{ color: "oklch(0.6 0.1 280)" }}
+                      >
+                        Reply to User
+                      </p>
+                      <textarea
+                        value={replyInputs[key] || ""}
+                        onChange={(e) =>
+                          setReplyInputs((prev) => ({
+                            ...prev,
+                            [key]: e.target.value,
+                          }))
+                        }
+                        placeholder="Admin reply likhein..."
+                        rows={2}
+                        className="w-full text-sm px-3 py-2 rounded-lg outline-none resize-none"
+                        style={{
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid rgba(123,77,255,0.3)",
+                          color: "oklch(0.9 0.05 280)",
+                        }}
+                        data-ocid={"support.textarea"}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleReply(ticket.ticketId)}
+                        disabled={
+                          !replyInputs[key]?.trim() || replyToTicket.isPending
+                        }
+                        className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
+                        style={{
+                          background: "rgba(123,77,255,0.3)",
+                          color: "oklch(0.96 0.01 280)",
+                          border: "1px solid rgba(123,77,255,0.4)",
+                        }}
+                        data-ocid={"support.save_button"}
+                      >
+                        {replyToTicket.isPending ? "Sending..." : "Send Reply"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResolve(ticket.ticketId)}
+                        disabled={isResolved || resolveTicket.isPending}
+                        className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
+                        style={{
+                          background: isResolved
+                            ? "rgba(0,200,100,0.1)"
+                            : "rgba(0,200,100,0.25)",
+                          color: "oklch(0.75 0.15 150)",
+                          border: "1px solid rgba(0,200,100,0.3)",
+                        }}
+                        data-ocid={"support.confirm_button"}
+                      >
+                        {isResolved ? "✓ Resolved" : "Mark Resolved"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState<AdminTab>("stats");
   const [viewTx, setViewTx] = useState<Transaction | null>(null);
+  const [errorLog, setErrorLog] = useState<
+    Array<{ time: string; msg: string; file: string; line: number }>
+  >([]);
+
+  useEffect(() => {
+    const handler = (event: ErrorEvent) => {
+      setErrorLog((prev) => [
+        ...prev,
+        {
+          time: new Date().toISOString(),
+          msg: event.message,
+          file: event.filename || "unknown",
+          line: event.lineno,
+        },
+      ]);
+    };
+    const rejHandler = (event: PromiseRejectionEvent) => {
+      setErrorLog((prev) => [
+        ...prev,
+        {
+          time: new Date().toISOString(),
+          msg: String(event.reason),
+          file: "Promise",
+          line: 0,
+        },
+      ]);
+    };
+    window.addEventListener("error", handler);
+    window.addEventListener("unhandledrejection", rejHandler);
+    return () => {
+      window.removeEventListener("error", handler);
+      window.removeEventListener("unhandledrejection", rejHandler);
+    };
+  }, []);
 
   const { data: stats } = usePlatformStats();
   const { data: users, isLoading: usersLoading } = useAllUsers();
@@ -1019,6 +1394,8 @@ export default function AdminPanel() {
     { id: "withdrawals", label: "Withdrawals", icon: Activity },
     { id: "payments", label: "QR Payments", icon: CreditCard },
     { id: "ads", label: "Ads Tasks", icon: Target },
+    { id: "support", label: "Support Tickets", icon: MessageCircle },
+    { id: "health", label: "System Health", icon: Activity },
   ];
 
   const handleApprove = async (id: bigint) => {
@@ -1435,6 +1812,134 @@ export default function AdminPanel() {
 
       {/* Ads Tasks Tab */}
       {activeTab === "ads" && <AdsTasksTab />}
+      {activeTab === "support" && <SupportTicketsTab />}
+      {activeTab === "health" && (
+        <div style={{ padding: "0 8px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 20,
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: "rgba(38,214,255,1)",
+              }}
+            >
+              System Health Monitor
+            </h2>
+            <button
+              type="button"
+              onClick={() => setErrorLog([])}
+              style={{
+                background: "rgba(123,77,255,0.2)",
+                border: "1px solid rgba(123,77,255,0.5)",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "6px 16px",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Clear Log
+            </button>
+          </div>
+
+          {/* Status indicator */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "12px 16px",
+              borderRadius: 10,
+              marginBottom: 20,
+              background:
+                errorLog.length === 0
+                  ? "rgba(34,197,94,0.1)"
+                  : "rgba(239,68,68,0.1)",
+              border: `1px solid ${errorLog.length === 0 ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
+            }}
+          >
+            <span style={{ fontSize: 20 }}>
+              {errorLog.length === 0 ? "✅" : "🔴"}
+            </span>
+            <span
+              style={{
+                fontWeight: 600,
+                color:
+                  errorLog.length === 0 ? "rgb(34,197,94)" : "rgb(239,68,68)",
+              }}
+            >
+              {errorLog.length === 0
+                ? "All Systems OK"
+                : `${errorLog.length} Error${errorLog.length > 1 ? "s" : ""} Detected`}
+            </span>
+          </div>
+
+          {/* Error list */}
+          {errorLog.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "40px 0",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+              <p style={{ fontSize: 15 }}>
+                No errors detected. System is running smoothly.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {errorLog.map((e, i) => (
+                <div
+                  key={e.time + String(i)}
+                  style={{
+                    background: "rgba(239,68,68,0.05)",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span
+                      style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}
+                    >
+                      {new Date(e.time).toLocaleTimeString()}
+                    </span>
+                    <span
+                      style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}
+                    >
+                      {e.file}:{e.line}
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "rgba(239,68,68,0.9)",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {e.msg}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Transaction Detail Modal */}
       {viewTx && (

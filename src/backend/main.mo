@@ -1,14 +1,16 @@
-import Array "mo:core/Array";
-import Iter "mo:core/Iter";
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
 import Order "mo:core/Order";
 import Principal "mo:core/Principal";
-import Runtime "mo:core/Runtime";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
+import Array "mo:core/Array";
+import Iter "mo:core/Iter";
+import Runtime "mo:core/Runtime";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+
+
 
 actor {
   // MODULES
@@ -40,6 +42,12 @@ actor {
   module UserProfile {
     public func compare(u1 : UserProfile, u2 : UserProfile) : Order.Order {
       Principal.compare(u1.user, u2.user);
+    };
+  };
+
+  module SupportTicket {
+    public func compare(t1 : SupportTicket, t2 : SupportTicket) : Order.Order {
+      Nat.compare(t1.ticketId, t2.ticketId);
     };
   };
 
@@ -97,39 +105,67 @@ actor {
     referralEarnings : Nat;
   };
 
-  // STATE
+  public type TicketStatus = {
+    #open;
+    #resolved;
+  };
+
+  public type SupportTicket = {
+    ticketId : Nat;
+    userId : ?Principal;
+    guestName : Text;
+    guestEmail : Text;
+    problemSummary : Text;
+    status : TicketStatus;
+    createdAt : Time.Time;
+    adminReply : Text;
+    adminRepliedAt : ?Time.Time;
+  };
+
+  // FIELDS
 
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  // Product plans (seeded)
   let productPlans = Map.empty<Nat, ProductPlan>();
-  let nextProductId = Nat.fromText("5");
-
-  // Transactions
   let transactions = Map.empty<Nat, Transaction>();
-  var nextTransactionId = 1;
-
-  // Referral codes (simple 8-char code -> owner principal)
   let referralCodes = Map.empty<Text, Principal>();
-
-  // Payment methods
   let paymentMethods = Map.empty<Text, PaymentMethod>();
-
-  // User profiles
   let userProfiles = Map.empty<Principal, UserProfile>();
-
-  // User referral earnings
   let userReferralEarnings = Map.empty<Principal, Nat>();
+  let supportTickets = Map.empty<Nat, SupportTicket>();
+  var nextTransactionId = 1;
+  var nextTicketId = 1;
 
-  // Helper function to get next transaction id and increment
+  // STABLE FIELDS
+
+  stable var stableUserProfiles : [(Principal, UserProfile)] = [];
+  stable var stableTransactions : [(Nat, Transaction)] = [];
+  stable var stableReferralCodes : [(Text, Principal)] = [];
+  stable var stablePaymentMethods : [(Text, PaymentMethod)] = [];
+  stable var stableNextTransactionId : Nat = 1;
+  stable var stableAdminAssigned : Bool = false;
+  stable var stableUserRoles : [(Principal, AccessControl.UserRole)] = [];
+  stable var nextProductId : ?Nat = null;
+  stable var stableSupportTickets : [(Nat, SupportTicket)] = [];
+  stable var stableNextTicketId : Nat = 1;
+
+  // ──────────────────────────────────────────────
+  // HELPERS
+  // ──────────────────────────────────────────────
+
   func getNextTransactionId() : Nat {
     let id = nextTransactionId;
     nextTransactionId += 1;
     id;
   };
 
-  // Helper function to generate referral code
+  func getNextTicketId() : Nat {
+    let id = nextTicketId;
+    nextTicketId += 1;
+    id;
+  };
+
   func generateReferralCode(user : Principal) : Text {
     let userText = user.toText();
     let len = userText.size();
@@ -140,51 +176,90 @@ actor {
     };
   };
 
-  // INITIALIZATION
-
-  system func preupgrade() {
-    // Seed product plans
+  func seedProductPlans() {
+    if (productPlans.size() > 0) return;
     productPlans.add(
-      1, {
+      1,
+      {
         id = 1;
-        name = "Basic";
-        price = 29;
-        features = ["Core marketplace", "1 storefront", "Email support"];
-        description = "Best for individuals";
+        name = "Starter Pack";
+        price = 1500;
+        features = ["20% Referral Commission", "Instant Activation", "One-time Purchase", "Fast Approval"];
+        description = "Start your earning journey with a simple, beginner-friendly digital product. One-time purchase with fast approval.";
       },
     );
     productPlans.add(
-      2, {
+      2,
+      {
         id = 2;
-        name = "Standard";
-        price = 79;
-        features = ["Custom branding", "5 stores", "Payout tools"];
-        description = "Best for small businesses";
+        name = "Growth Pack";
+        price = 3000;
+        features = ["20% Referral Commission", "Instant Activation", "One-time Purchase", "Fast Approval"];
+        description = "Accelerate your income with higher referral returns. Secure system, instant activation after approval.";
       },
     );
     productPlans.add(
-      3, {
+      3,
+      {
         id = 3;
-        name = "Premium";
-        price = 149;
-        features = ["Premium support", "Advanced reports"];
-        description = "Best for growing businesses";
+        name = "Pro Pack";
+        price = 5000;
+        features = ["17% Referral Commission", "Instant Activation", "One-time Purchase", "Priority Approval"];
+        description = "Maximize your earning potential with premium referral benefits. Trusted by thousands of active earners.";
       },
     );
     productPlans.add(
-      4, {
+      4,
+      {
         id = 4;
-        name = "Enterprise";
-        price = 299;
-        features = ["Custom solutions", "Dedicated manager"];
-        description = "Custom for large orgs";
+        name = "Elite Pack";
+        price = 8000;
+        features = ["15% Referral Commission", "Instant Activation", "One-time Purchase", "VIP Support"];
+        description = "Top-tier plan for serious earners. Maximum commissions, priority approval, long-term earning potential.";
       },
     );
   };
 
-  // PUBLIC FUNCTIONS
+  // ──────────────────────────────────────────────
+  // UPGRADE HOOKS
+  // ──────────────────────────────────────────────
 
-  // User registration - requires user role
+  // Called BEFORE upgrade — snapshot all in-memory data to stable vars
+  system func preupgrade() {
+    stableUserProfiles := userProfiles.entries().toArray();
+    stableTransactions := transactions.entries().toArray();
+    stableReferralCodes := referralCodes.entries().toArray();
+    stablePaymentMethods := paymentMethods.entries().toArray();
+    stableNextTransactionId := nextTransactionId;
+    stableAdminAssigned := accessControlState.adminAssigned;
+    stableUserRoles := accessControlState.userRoles.entries().toArray();
+    stableSupportTickets := supportTickets.entries().toArray();
+    stableNextTicketId := nextTicketId;
+  };
+
+  // Called AFTER upgrade — restore all data from stable vars
+  system func postupgrade() {
+    for ((k, v) in stableUserProfiles.vals()) { userProfiles.add(k, v) };
+    for ((k, v) in stableTransactions.vals()) { transactions.add(k, v) };
+    for ((k, v) in stableReferralCodes.vals()) { referralCodes.add(k, v) };
+    for ((k, v) in stablePaymentMethods.vals()) { paymentMethods.add(k, v) };
+    nextTransactionId := stableNextTransactionId;
+    accessControlState.adminAssigned := stableAdminAssigned;
+    for ((k, v) in stableUserRoles.vals()) {
+      accessControlState.userRoles.add(k, v);
+    };
+    for ((k, v) in stableSupportTickets.vals()) { supportTickets.add(k, v) };
+    nextTicketId := stableNextTicketId;
+    seedProductPlans();
+  };
+
+  // Seed plans on first install (postupgrade doesn't run on fresh install)
+  ignore do { seedProductPlans() };
+
+  // ──────────────────────────────────────────────
+  // PUBLIC FUNCTIONS
+  // ──────────────────────────────────────────────
+
   public shared ({ caller }) func registerUser(username : Text, referralCode : ?Text) : async UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can register");
@@ -202,7 +277,7 @@ actor {
 
     var referredBy : ?Principal = null;
     switch (referralCode) {
-      case (null) { };
+      case (null) {};
       case (?code) {
         if (code == "") {
           Runtime.trap("Referral code cannot be empty");
@@ -240,7 +315,6 @@ actor {
     userProfile;
   };
 
-  // Get caller's user profile - requires user role
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view profiles");
@@ -248,7 +322,6 @@ actor {
     userProfiles.get(caller);
   };
 
-  // Save caller's user profile - requires user role
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can save profiles");
@@ -259,7 +332,6 @@ actor {
     userProfiles.add(caller, profile);
   };
 
-  // Get user profile - caller must be the user or admin
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
     if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Can only view your own profile");
@@ -267,7 +339,6 @@ actor {
     userProfiles.get(user);
   };
 
-  // Get user balance - caller must be the user or admin
   public query ({ caller }) func getUserBalance(address : Principal) : async Nat {
     if (caller != address and not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Can only view your own balance");
@@ -278,7 +349,6 @@ actor {
     };
   };
 
-  // Create deposit request - requires user role
   public shared ({ caller }) func createDepositRequest(amount : Nat, paymentMethod : Text, extraNotes : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create deposit requests");
@@ -291,8 +361,28 @@ actor {
       Runtime.trap("Payment method cannot be empty");
     };
 
+    // Auto-create profile if user doesn't have one (prevents silent failure)
+    if (not userProfiles.containsKey(caller)) {
+      let autoCode = generateReferralCode(caller);
+      if (not referralCodes.containsKey(autoCode)) {
+        referralCodes.add(autoCode, caller);
+      };
+      userProfiles.add(
+        caller,
+        {
+          user = caller;
+          username = "User";
+          balance = 0;
+          referralCode = autoCode;
+          referredBy = null;
+          referralEarnings = 0;
+        },
+      );
+      userReferralEarnings.add(caller, 0);
+    };
+
     let transactionId = getNextTransactionId();
-    let notes = if (extraNotes == "") "Deposit request created" else extraNotes;
+    let notes = if (extraNotes == "") { "Deposit request created" } else { extraNotes };
     transactions.add(
       transactionId,
       {
@@ -309,7 +399,6 @@ actor {
     transactionId;
   };
 
-  // Request withdrawal - requires user role
   public shared ({ caller }) func requestWithdrawal(amount : Nat, paymentMethod : Text, extraNotes : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can request withdrawals");
@@ -323,13 +412,12 @@ actor {
     };
 
     switch (userProfiles.get(caller)) {
-      case (null) { Runtime.trap("User not found") };
+      case (null) { Runtime.trap("User profile not found. Please register first.") };
       case (?profile) {
-        if (profile.balance < amount) { 
-          Runtime.trap("Insufficient balance") 
+        if (profile.balance < amount) {
+          Runtime.trap("Insufficient balance");
         };
-        
-        // Deduct balance immediately on withdrawal request
+
         let updatedProfile = {
           user = profile.user;
           username = profile.username;
@@ -341,7 +429,7 @@ actor {
         userProfiles.add(caller, updatedProfile);
 
         let transactionId = getNextTransactionId();
-        let notes = if (extraNotes == "") "Withdrawal request created" else extraNotes;
+        let notes = if (extraNotes == "") { "Withdrawal request created" } else { extraNotes };
         transactions.add(
           transactionId,
           {
@@ -360,7 +448,6 @@ actor {
     };
   };
 
-  // Process purchase - requires user role
   public shared ({ caller }) func processPurchase(productId : Nat, referralCode : ?Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can make purchases");
@@ -378,7 +465,6 @@ actor {
           Runtime.trap("Insufficient balance to purchase product");
         };
 
-        // Deduct balance
         let updatedProfile = {
           user = profile.user;
           username = profile.username;
@@ -389,7 +475,6 @@ actor {
         };
         userProfiles.add(caller, updatedProfile);
 
-        // Create purchase transaction
         let transactionId = getNextTransactionId();
         let notes = "Product purchase: " # product.name;
         transactions.add(
@@ -406,13 +491,12 @@ actor {
           },
         );
 
-        // Process referral bonus (10% to referrer)
         switch (profile.referredBy) {
-          case (null) { };
+          case (null) {};
           case (?referrer) {
-            let bonusAmount = product.price / 10; // 10% bonus
+            let bonusAmount = product.price / 10;
             switch (userProfiles.get(referrer)) {
-              case (null) { };
+              case (null) {};
               case (?referrerProfile) {
                 let updatedReferrerProfile = {
                   user = referrerProfile.user;
@@ -424,7 +508,6 @@ actor {
                 };
                 userProfiles.add(referrer, updatedReferrerProfile);
 
-                // Create referral bonus transaction
                 let bonusTransactionId = getNextTransactionId();
                 transactions.add(
                   bonusTransactionId,
@@ -449,12 +532,10 @@ actor {
     };
   };
 
-  // Get all product plans - public access
   public query ({ caller }) func getAllProductPlans() : async [ProductPlan] {
     productPlans.values().toArray().sort();
   };
 
-  // Add payment method - admin only
   public shared ({ caller }) func addPaymentMethod(newPaymentMethod : PaymentMethod) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can add payment methods");
@@ -468,19 +549,9 @@ actor {
     if (description == "") {
       Runtime.trap("Payment method description cannot be empty");
     };
-    if (paymentMethods.containsKey(name)) {
-      Runtime.trap("Payment method already exists");
-    };
-    paymentMethods.add(
-      name,
-      {
-        name;
-        description;
-      },
-    );
+    paymentMethods.add(name, { name; description });
   };
 
-  // Remove payment method - admin only
   public shared ({ caller }) func removePaymentMethod(name : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can remove payment methods");
@@ -492,12 +563,10 @@ actor {
     paymentMethods.remove(name);
   };
 
-  // Get all payment methods - public access
   public query ({ caller }) func getAllPaymentMethods() : async [PaymentMethod] {
     paymentMethods.values().toArray().sort();
   };
 
-  // Get all users - admin only
   public query ({ caller }) func getAllUsers() : async [UserProfile] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can view all users");
@@ -505,7 +574,6 @@ actor {
     userProfiles.values().toArray().sort();
   };
 
-  // Get all transactions - admin only
   public query ({ caller }) func getAllTransactions() : async [Transaction] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can view all transactions");
@@ -513,7 +581,6 @@ actor {
     transactions.values().toArray().sort();
   };
 
-  // Approve transaction - admin only
   public shared ({ caller }) func approveTransaction(transactionId : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can approve transactions");
@@ -526,7 +593,6 @@ actor {
           Runtime.trap("Transaction is not pending");
         };
 
-        // Update transaction status
         let updatedTx = {
           id = tx.id;
           user = tx.user;
@@ -539,10 +605,9 @@ actor {
         };
         transactions.add(transactionId, updatedTx);
 
-        // For deposits, update user balance
         if (tx.txType == #deposit) {
           switch (userProfiles.get(tx.user)) {
-            case (null) { };
+            case (null) {};
             case (?profile) {
               let updatedProfile = {
                 user = profile.user;
@@ -560,7 +625,6 @@ actor {
     };
   };
 
-  // Reject transaction - admin only
   public shared ({ caller }) func rejectTransaction(transactionId : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can reject transactions");
@@ -573,7 +637,6 @@ actor {
           Runtime.trap("Transaction is not pending");
         };
 
-        // Update transaction status
         let updatedTx = {
           id = tx.id;
           user = tx.user;
@@ -586,10 +649,9 @@ actor {
         };
         transactions.add(transactionId, updatedTx);
 
-        // For withdrawals, refund the balance
         if (tx.txType == #withdrawal) {
           switch (userProfiles.get(tx.user)) {
-            case (null) { };
+            case (null) {};
             case (?profile) {
               let updatedProfile = {
                 user = profile.user;
@@ -607,7 +669,6 @@ actor {
     };
   };
 
-  // Update user balance - admin only
   public shared ({ caller }) func updateUserBalance(user : Principal, newBalance : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update user balances");
@@ -629,12 +690,10 @@ actor {
     };
   };
 
-  // Update user role - admin only (uses AccessControl.assignRole which has built-in admin guard)
   public shared ({ caller }) func updateUserRole(user : Principal, role : AccessControl.UserRole) : async () {
     AccessControl.assignRole(accessControlState, caller, user, role);
   };
 
-  // Get platform stats - admin only
   public query ({ caller }) func getPlatformStats() : async {
     totalUsers : Nat;
     totalTransactions : Nat;
@@ -645,6 +704,111 @@ actor {
     {
       totalUsers = userProfiles.size();
       totalTransactions = transactions.size();
+    };
+  };
+
+  // ──────────────────────────────────────────────
+  // SUPPORT TICKET FUNCTIONS
+  // ──────────────────────────────────────────────
+
+  // Create a support ticket - open to all (guests and users)
+  public shared ({ caller }) func createSupportTicket(guestName : Text, guestEmail : Text, problemSummary : Text) : async Nat {
+    if (problemSummary == "") {
+      Runtime.trap("Problem summary cannot be empty");
+    };
+
+    let isAnonymous = caller.isAnonymous();
+    let userId : ?Principal = if (isAnonymous) { null } else { ?caller };
+
+    let ticketId = getNextTicketId();
+    supportTickets.add(
+      ticketId,
+      {
+        ticketId;
+        userId;
+        guestName;
+        guestEmail;
+        problemSummary;
+        status = #open;
+        createdAt = Time.now();
+        adminReply = "";
+        adminRepliedAt = null;
+      },
+    );
+    ticketId;
+  };
+
+  // Get tickets for the logged-in user
+  public query ({ caller }) func getMyTickets() : async [SupportTicket] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view tickets");
+    };
+    let all = supportTickets.values().toArray();
+    all.filter<SupportTicket>(
+      func(t) {
+        switch (t.userId) {
+          case (null) { false };
+          case (?uid) { uid == caller };
+        };
+      }
+    );
+  };
+
+  // Get all support tickets - admin only
+  public query ({ caller }) func getAllSupportTickets() : async [SupportTicket] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can view all support tickets");
+    };
+    supportTickets.values().toArray().sort();
+  };
+
+  // Admin reply to a ticket
+  public shared ({ caller }) func replyToTicket(ticketId : Nat, reply : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can reply to tickets");
+    };
+
+    switch (supportTickets.get(ticketId)) {
+      case (null) { Runtime.trap("Ticket not found") };
+      case (?ticket) {
+        let updatedTicket = {
+          ticketId = ticket.ticketId;
+          userId = ticket.userId;
+          guestName = ticket.guestName;
+          guestEmail = ticket.guestEmail;
+          problemSummary = ticket.problemSummary;
+          status = ticket.status;
+          createdAt = ticket.createdAt;
+          adminReply = reply;
+          adminRepliedAt = ?Time.now();
+        };
+        supportTickets.add(ticketId, updatedTicket);
+      };
+    };
+  };
+
+  // Admin resolve a ticket
+  public shared ({ caller }) func resolveTicket(ticketId : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can resolve tickets");
+    };
+
+    switch (supportTickets.get(ticketId)) {
+      case (null) { Runtime.trap("Ticket not found") };
+      case (?ticket) {
+        let updatedTicket = {
+          ticketId = ticket.ticketId;
+          userId = ticket.userId;
+          guestName = ticket.guestName;
+          guestEmail = ticket.guestEmail;
+          problemSummary = ticket.problemSummary;
+          status = #resolved;
+          createdAt = ticket.createdAt;
+          adminReply = ticket.adminReply;
+          adminRepliedAt = ticket.adminRepliedAt;
+        };
+        supportTickets.add(ticketId, updatedTicket);
+      };
     };
   };
 };
