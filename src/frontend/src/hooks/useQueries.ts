@@ -61,16 +61,20 @@ export function useAllTransactions() {
       if (!actor) return loadCache<Transaction>(TRANSACTIONS_CACHE_KEY);
       try {
         const result = await actor.getAllTransactions();
+        // Only cache if we got real data; don't return stale cache when backend says empty
         if (result && result.length > 0) {
           saveCache(TRANSACTIONS_CACHE_KEY, result);
           return result;
         }
-        return loadCache<Transaction>(TRANSACTIONS_CACHE_KEY);
+        // Backend returned empty array — trust it, don't use stale cache
+        return result ?? [];
       } catch {
+        // Only fall back to cache on error (network issue, canister down etc.)
         return loadCache<Transaction>(TRANSACTIONS_CACHE_KEY);
       }
     },
     enabled: !!actor && !isFetching,
+    staleTime: 30000,
   });
 }
 
@@ -82,16 +86,20 @@ export function useAllUsers() {
       if (!actor) return loadCache<UserProfile>(USERS_CACHE_KEY);
       try {
         const result = await actor.getAllUsers();
+        // Only cache if we got real data; don't return stale cache when backend says empty
         if (result && result.length > 0) {
           saveCache(USERS_CACHE_KEY, result);
           return result;
         }
-        return loadCache<UserProfile>(USERS_CACHE_KEY);
+        // Backend returned empty — trust it
+        return result ?? [];
       } catch {
+        // Only fall back to cache on error
         return loadCache<UserProfile>(USERS_CACHE_KEY);
       }
     },
     enabled: !!actor && !isFetching,
+    staleTime: 30000,
   });
 }
 
@@ -128,16 +136,20 @@ export function usePaymentMethods() {
       if (!actor) return loadCache<PaymentMethod>(PAYMENT_METHODS_CACHE_KEY);
       try {
         const result = await actor.getAllPaymentMethods();
+        // Only cache if we got real data; don't return stale cache when backend says empty
         if (result && result.length > 0) {
           saveCache(PAYMENT_METHODS_CACHE_KEY, result);
           return result;
         }
-        return loadCache<PaymentMethod>(PAYMENT_METHODS_CACHE_KEY);
+        // Backend returned empty — trust it
+        return result ?? [];
       } catch {
+        // Only fall back to cache on error
         return loadCache<PaymentMethod>(PAYMENT_METHODS_CACHE_KEY);
       }
     },
     enabled: !!actor && !isFetching,
+    staleTime: 30000,
   });
 }
 
@@ -151,9 +163,7 @@ export function useDeposit() {
       extraNotes,
     }: { amount: bigint; paymentMethod: string; extraNotes?: string }) => {
       if (!actor) throw new Error("Not connected");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (actor as any).createDepositRequest(
+      return actor.createDepositRequest(
         amount,
         paymentMethod,
         extraNotes ?? "",
@@ -176,13 +186,7 @@ export function useWithdraw() {
       extraNotes,
     }: { amount: bigint; paymentMethod: string; extraNotes?: string }) => {
       if (!actor) throw new Error("Not connected");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (actor as any).requestWithdrawal(
-        amount,
-        paymentMethod,
-        extraNotes ?? "",
-      );
+      return actor.requestWithdrawal(amount, paymentMethod, extraNotes ?? "");
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["userProfile"] });
@@ -348,5 +352,52 @@ export function useResolveTicket() {
       return actor.resolveTicket(ticketId);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["allSupportTickets"] }),
+  });
+}
+
+export function useFullBackupData() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["fullBackupData"],
+    queryFn: async () => {
+      if (!actor) return null;
+      const [users, transactions] = await Promise.all([
+        actor.getAllUsers(),
+        actor.getAllTransactions(),
+      ]);
+      const totalBalance = users.reduce((s, u) => s + u.balance, BigInt(0));
+      return {
+        users,
+        transactions,
+        snapshotTime: BigInt(Date.now()) * BigInt(1_000_000),
+        totalUsers: BigInt(users.length),
+        totalBalance,
+      };
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: false,
+  });
+}
+
+export function useRestoreUserBalances() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      updates: Array<[import("@icp-sdk/core/principal").Principal, bigint]>,
+    ) => {
+      if (!actor) throw new Error("Not connected");
+      await Promise.all(
+        updates.map(([user, balance]) =>
+          actor.updateUserBalance(user, balance),
+        ),
+      );
+      return BigInt(updates.length);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["allUsers"] });
+      qc.invalidateQueries({ queryKey: ["fullBackupData"] });
+      qc.invalidateQueries({ queryKey: ["platformStats"] });
+    },
   });
 }

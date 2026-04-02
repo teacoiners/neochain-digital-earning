@@ -24,6 +24,8 @@ import PrivacyPage from "./pages/PrivacyPage";
 import RefundPage from "./pages/RefundPage";
 import TermsPage from "./pages/TermsPage";
 
+const ADMIN_SESSION_KEY = "neochain_admin_authenticated";
+
 function RootLayout() {
   const { identity, loginStatus } = useInternetIdentity();
   const { actor, isFetching } = useActor();
@@ -32,6 +34,7 @@ function RootLayout() {
 
   const [showRegister, setShowRegister] = useState(false);
   const [signUpIntent, setSignUpIntent] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
 
   // Auto-show register modal after login if no profile exists
   useEffect(() => {
@@ -82,7 +85,12 @@ function RootLayout() {
 
   return (
     <div className="min-h-screen flex flex-col cyber-grid-bg">
-      <Navbar onSignUpClick={handleSignUpClick} />
+      <Navbar
+        onSignUpClick={handleSignUpClick}
+        onBuyPlan={() => setWalletOpen(true)}
+        walletOpen={walletOpen}
+        onWalletClose={() => setWalletOpen(false)}
+      />
       <main className="flex-1">
         <Outlet />
       </main>
@@ -111,9 +119,18 @@ function ProtectedDashboard() {
 }
 
 function ProtectedAdmin() {
-  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  // Use sessionStorage so admin auth persists through page refreshes within the browser session
+  const [adminAuthenticated, setAdminAuthenticated] = useState(() => {
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+  });
+
+  const handleLogin = () => {
+    sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+    setAdminAuthenticated(true);
+  };
+
   if (!adminAuthenticated) {
-    return <AdminLoginPage onLogin={() => setAdminAuthenticated(true)} />;
+    return <AdminLoginPage onLogin={handleLogin} />;
   }
   return <AdminPanel />;
 }

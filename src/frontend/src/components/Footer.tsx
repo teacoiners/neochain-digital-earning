@@ -7,6 +7,18 @@ export default function Footer() {
     typeof window !== "undefined" ? window.location.hostname : "";
   const caffeineLink = `https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(hostname)}`;
 
+  // Read support email from siteSettings, fall back to owner email
+  const supportEmail = (() => {
+    try {
+      const saved = localStorage.getItem("siteSettings");
+      if (saved) {
+        const settings = JSON.parse(saved);
+        if (settings.email) return settings.email;
+      }
+    } catch {}
+    return "sandeepkarna71@gmail.com";
+  })();
+
   return (
     <footer
       className="mt-20 border-t"
@@ -37,7 +49,7 @@ export default function Footer() {
             </p>
           </div>
 
-          {/* Products */}
+          {/* Products — updated with actual plan names */}
           <div>
             <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-neon-cyan mb-4">
               Products
@@ -48,7 +60,7 @@ export default function Footer() {
                   href="/#plans"
                   className="hover:text-foreground transition-colors"
                 >
-                  Basic Plan
+                  Starter Pack (₹1500)
                 </a>
               </li>
               <li>
@@ -56,7 +68,7 @@ export default function Footer() {
                   href="/#plans"
                   className="hover:text-foreground transition-colors"
                 >
-                  Standard Plan
+                  Growth Pack (₹3000)
                 </a>
               </li>
               <li>
@@ -64,7 +76,7 @@ export default function Footer() {
                   href="/#plans"
                   className="hover:text-foreground transition-colors"
                 >
-                  Premium Plan
+                  Pro Pack (₹5000)
                 </a>
               </li>
               <li>
@@ -72,7 +84,7 @@ export default function Footer() {
                   href="/#plans"
                   className="hover:text-foreground transition-colors"
                 >
-                  Enterprise Plan
+                  Elite Pack (₹8000)
                 </a>
               </li>
             </ul>
@@ -111,7 +123,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a
-                  href="mailto:support@neochain.store"
+                  href={`mailto:${supportEmail}`}
                   className="hover:text-foreground transition-colors"
                 >
                   Contact Us
@@ -155,7 +167,7 @@ export default function Footer() {
                   to="/terms"
                   className="hover:text-foreground transition-colors"
                 >
-                  Terms & Conditions
+                  Terms &amp; Conditions
                 </Link>
               </li>
             </ul>
@@ -166,7 +178,9 @@ export default function Footer() {
           className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground"
           style={{ borderTop: "1px solid rgba(123, 77, 255, 0.15)" }}
         >
-          <span>© {year} NeoChain Digital Store. All rights reserved.</span>
+          <span>
+            &copy; {year} NeoChain Digital Store. All rights reserved.
+          </span>
           <a
             href={caffeineLink}
             target="_blank"

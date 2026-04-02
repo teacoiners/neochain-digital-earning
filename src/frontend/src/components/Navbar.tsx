@@ -18,14 +18,24 @@ import WalletModal from "./WalletModal";
 
 interface NavbarProps {
   onSignUpClick?: () => void;
+  /** Called when user clicks "Buy Plan" in 3-dot menu — should open wallet with buy plan tab */
+  onBuyPlan?: () => void;
+  /** Controlled wallet open state (lifted from App.tsx) */
+  walletOpen?: boolean;
+  onWalletClose?: () => void;
 }
 
-export default function Navbar({ onSignUpClick }: NavbarProps) {
+export default function Navbar({
+  onSignUpClick,
+  onBuyPlan,
+  walletOpen: externalWalletOpen,
+  onWalletClose,
+}: NavbarProps) {
   const { identity, login, clear, isLoggingIn } = useInternetIdentity();
   const { data: userProfile } = useUserProfile();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(false);
+  const [internalWalletOpen, setInternalWalletOpen] = useState(false);
   const [referralOpen, setReferralOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [paymentProduct, setPaymentProduct] = useState<{
@@ -36,7 +46,13 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
   } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const openWallet = () => setWalletOpen(true);
+  // Merge external and internal wallet open state
+  const walletOpen = externalWalletOpen ?? internalWalletOpen;
+  const openWallet = () => setInternalWalletOpen(true);
+  const closeWallet = () => {
+    setInternalWalletOpen(false);
+    onWalletClose?.();
+  };
 
   const navLinks = [
     { label: "Store", to: "/" },
@@ -67,6 +83,16 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
   const handleSignUp = () => {
     if (onSignUpClick) onSignUpClick();
     login();
+  };
+
+  // "Buy Plan" in 3-dot menu: open WalletModal with plans tab active
+  const handleBuyPlanClick = () => {
+    setDropdownOpen(false);
+    if (onBuyPlan) {
+      onBuyPlan();
+    } else {
+      openWallet();
+    }
   };
 
   const dropdownItems = (
@@ -113,14 +139,12 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
       >
         <span style={{ fontSize: 14 }}>📋</span> View Plans
       </button>
+      {/* Buy Plan opens WalletModal with Buy Plan tab, not navigate to /#plans */}
       <button
         type="button"
-        onClick={() => {
-          window.location.href = "/#plans";
-          setDropdownOpen(false);
-        }}
+        onClick={handleBuyPlanClick}
         className="flex w-full items-center gap-2 px-4 py-3 text-sm text-foreground hover:bg-white/5 transition-colors"
-        data-ocid="nav.link"
+        data-ocid="nav.button"
       >
         <span style={{ fontSize: 14 }}>🛒</span> Buy Plan
       </button>
@@ -164,39 +188,82 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
   return (
     <>
       <header
-        className="sticky top-0 z-50 w-full"
+        className="fixed top-0 z-50 w-full h-12"
         style={{
-          background: "rgba(7, 8, 26, 0.92)",
-          backdropFilter: "blur(20px)",
-          borderBottom: "1px solid rgba(123, 77, 255, 0.25)",
-          boxShadow: "0 4px 30px rgba(0, 0, 0, 0.5)",
+          background: "#0b0b0b",
+          borderBottom: "1px solid rgba(0,150,255,0.3)",
+          boxShadow:
+            "0 2px 20px rgba(0,150,255,0.15), 0 1px 8px rgba(0,200,100,0.1)",
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-12">
             {/* Logo */}
             <Link
               to="/"
-              className="flex items-center gap-2 group"
+              className="flex items-center gap-2 group shrink-0"
               data-ocid="nav.link"
             >
               <img
                 src="/assets/generated/neochain-logo-transparent.dim_200x200.png"
                 alt="NeoChain Logo"
-                className="w-8 h-8 rounded-lg object-cover"
-                style={{ boxShadow: "0 0 20px rgba(38, 214, 255, 0.5)" }}
+                className="w-6 h-6 rounded-md object-cover"
+                style={{ boxShadow: "0 0 12px rgba(38, 214, 255, 0.5)" }}
               />
               <span
-                className="font-display font-black text-xl tracking-widest uppercase"
-                style={{ letterSpacing: "0.2em" }}
+                className="font-display font-black text-base tracking-widest uppercase"
+                style={{ letterSpacing: "0.15em" }}
               >
                 <span className="neon-text-cyan">NEO</span>
                 <span className="text-foreground">CHAIN</span>
               </span>
             </Link>
 
-            {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center gap-6">
+            {/* Desktop Quick Nav Links — between logo and right-side buttons */}
+            <nav className="hidden lg:flex items-center gap-5 mx-4">
+              <a
+                href="/"
+                className="text-xs font-medium text-gray-400 hover:text-cyan-400 transition-colors"
+                data-ocid="nav.link"
+              >
+                Home
+              </a>
+              <a
+                href="/#plans"
+                className="text-xs font-medium text-gray-400 hover:text-cyan-400 transition-colors"
+                data-ocid="nav.link"
+              >
+                Products
+              </a>
+              <a
+                href="/#about-trust"
+                className="text-xs font-medium text-gray-400 hover:text-cyan-400 transition-colors"
+                data-ocid="nav.link"
+              >
+                Contact
+              </a>
+              {isLoggedIn ? (
+                <Link
+                  to="/dashboard"
+                  className="text-xs font-medium text-gray-400 hover:text-cyan-400 transition-colors"
+                  data-ocid="nav.link"
+                >
+                  Account
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={login}
+                  className="text-xs font-medium text-gray-400 hover:text-cyan-400 transition-colors"
+                  data-ocid="nav.link"
+                >
+                  Account
+                </button>
+              )}
+            </nav>
+
+            {/* Desktop Nav (existing) */}
+            <nav className="hidden md:flex lg:hidden items-center gap-4">
               {navLinks.map((link) => (
                 <Link
                   key={link.label}
@@ -210,16 +277,16 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
             </nav>
 
             {/* Right Side */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1.5">
               {isLoggedIn && (
                 <>
                   {/* Balance Badge */}
                   <div
-                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-display font-bold"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-display font-bold"
                     style={{
                       background: "rgba(38, 214, 255, 0.1)",
                       border: "1px solid rgba(38, 214, 255, 0.3)",
-                      boxShadow: "0 0 10px rgba(38, 214, 255, 0.12)",
+                      boxShadow: "0 0 8px rgba(38, 214, 255, 0.12)",
                     }}
                     data-ocid="nav.panel"
                   >
@@ -238,7 +305,7 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
                   <button
                     type="button"
                     onClick={() => openWallet()}
-                    className="hidden sm:flex neon-btn items-center gap-1.5 px-3 py-2 text-sm"
+                    className="hidden sm:flex neon-btn items-center gap-1.5 px-3 py-1.5 text-xs"
                     style={{
                       borderColor: "rgba(201, 60, 255, 0.4)",
                       boxShadow: "0 0 12px rgba(201, 60, 255, 0.15)",
@@ -254,11 +321,11 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
                     <button
                       type="button"
                       onClick={() => setDropdownOpen((v) => !v)}
-                      className="neon-btn p-2"
+                      className="neon-btn p-1.5"
                       aria-label="Menu"
                       data-ocid="nav.button"
                     >
-                      <MoreVertical className="w-5 h-5" />
+                      <MoreVertical className="w-4 h-4" />
                     </button>
                     {dropdownOpen && (
                       <div
@@ -308,7 +375,7 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
                       type="button"
                       onClick={login}
                       disabled={isLoggingIn}
-                      className="neon-btn flex items-center gap-1.5 px-3 py-2"
+                      className="neon-btn flex items-center gap-1.5 px-3 py-1.5"
                       style={{
                         borderColor: "rgba(38, 214, 255, 0.5)",
                         color: "oklch(0.82 0.18 200)",
@@ -317,9 +384,9 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
                       data-ocid="nav.login_button"
                     >
                       {isLoggingIn ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
-                        <LogIn className="w-3.5 h-3.5" />
+                        <LogIn className="w-3 h-3" />
                       )}
                       <span className="text-xs font-semibold">
                         {isLoggingIn ? "..." : "Login"}
@@ -329,13 +396,13 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
                       type="button"
                       onClick={handleSignUp}
                       disabled={isLoggingIn}
-                      className="neon-btn-primary flex items-center gap-1.5 px-3 py-2"
+                      className="neon-btn-primary flex items-center gap-1.5 px-3 py-1.5"
                       data-ocid="nav.signup_button"
                     >
                       {isLoggingIn ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
-                        <UserPlus className="w-3.5 h-3.5" />
+                        <UserPlus className="w-3 h-3" />
                       )}
                       <span className="text-xs font-semibold">
                         {isLoggingIn ? "..." : "Sign Up"}
@@ -359,10 +426,10 @@ export default function Navbar({ onSignUpClick }: NavbarProps) {
 
       <WalletModal
         open={walletOpen}
-        onClose={() => setWalletOpen(false)}
+        onClose={closeWallet}
         userProfile={userProfile ?? null}
         onBuyPlan={(plan) => {
-          setWalletOpen(false);
+          closeWallet();
           setPaymentProduct(plan);
         }}
       />
