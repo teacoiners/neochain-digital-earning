@@ -18,10 +18,16 @@ import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import AdminLoginPage from "./pages/AdminLoginPage";
 import AdminPanel from "./pages/AdminPanel";
+import ContactPage from "./pages/ContactPage";
 import Dashboard from "./pages/Dashboard";
 import LandingPage from "./pages/LandingPage";
+import LoginPage from "./pages/LoginPage";
+import MobileAppsPage from "./pages/MobileAppsPage";
 import PrivacyPage from "./pages/PrivacyPage";
+import ProductsPage from "./pages/ProductsPage";
 import RefundPage from "./pages/RefundPage";
+import RegisterPage from "./pages/RegisterPage";
+import SitemapPage from "./pages/SitemapPage";
 import TermsPage from "./pages/TermsPage";
 
 const ADMIN_SESSION_KEY = "neochain_admin_authenticated";
@@ -36,21 +42,24 @@ function RootLayout() {
   const [signUpIntent, setSignUpIntent] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
 
-  // Auto-show register modal after login if no profile exists
+  // Standalone pages (/login, /register) handle their own auth UI
+  const isStandalonePage =
+    location.pathname === "/login" || location.pathname === "/register";
+
+  // Auto-show register modal after login if no profile exists (only on non-standalone pages)
   useEffect(() => {
-    if (!identity || !actor || isFetching) return;
+    if (!identity || !actor || isFetching || isStandalonePage) return;
     actor
       .getCallerUserProfile()
       .then((profile) => {
         if (profile === null) {
           setShowRegister(true);
         } else if (signUpIntent) {
-          // Already has profile, just clear intent
           setSignUpIntent(false);
         }
       })
       .catch(() => {});
-  }, [identity, actor, isFetching, signUpIntent]);
+  }, [identity, actor, isFetching, signUpIntent, isStandalonePage]);
 
   useEffect(() => {
     if (loginStatus === "idle") {
@@ -119,7 +128,6 @@ function ProtectedDashboard() {
 }
 
 function ProtectedAdmin() {
-  // Use sessionStorage so admin auth persists through page refreshes within the browser session
   const [adminAuthenticated, setAdminAuthenticated] = useState(() => {
     return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
   });
@@ -140,6 +148,31 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: LandingPage,
+});
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: LoginPage,
+});
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/register",
+  component: RegisterPage,
+});
+const productsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/products",
+  component: ProductsPage,
+});
+const mobileAppsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mobile-apps",
+  component: MobileAppsPage,
+});
+const contactRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contact",
+  component: ContactPage,
 });
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -166,14 +199,25 @@ const termsRoute = createRoute({
   path: "/terms",
   component: TermsPage,
 });
+const sitemapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sitemap",
+  component: SitemapPage,
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  loginRoute,
+  registerRoute,
+  productsRoute,
+  mobileAppsRoute,
+  contactRoute,
   dashboardRoute,
   adminRoute,
   privacyRoute,
   refundRoute,
   termsRoute,
+  sitemapRoute,
 ]);
 const router = createRouter({ routeTree });
 

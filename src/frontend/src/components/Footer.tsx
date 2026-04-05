@@ -7,7 +7,6 @@ export default function Footer() {
     typeof window !== "undefined" ? window.location.hostname : "";
   const caffeineLink = `https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(hostname)}`;
 
-  // Read support email from siteSettings, fall back to owner email
   const supportEmail = (() => {
     try {
       const saved = localStorage.getItem("siteSettings");
@@ -29,9 +28,9 @@ export default function Footer() {
       }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-8 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-8 mb-10">
           {/* Brand */}
-          <div className="md:col-span-1">
+          <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <img
                 src="/assets/generated/neochain-logo-transparent.dim_200x200.png"
@@ -45,55 +44,15 @@ export default function Footer() {
               </span>
             </div>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              The future of digital commerce. Secure, fast, and decentralized.
+              NeoChain Digital Store — your trusted platform for digital earning
+              through referral commissions and daily rewards.
             </p>
           </div>
 
-          {/* Products — updated with actual plan names */}
+          {/* Quick Links — SEO critical for sitelinks */}
           <div>
             <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-neon-cyan mb-4">
-              Products
-            </h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>
-                <a
-                  href="/#plans"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Starter Pack (₹1500)
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#plans"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Growth Pack (₹3000)
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#plans"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Pro Pack (₹5000)
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/#plans"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Elite Pack (₹8000)
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Platform */}
-          <div>
-            <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-neon-cyan mb-4">
-              Platform
+              Quick Links
             </h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
@@ -106,10 +65,91 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  to="/dashboard"
+                  to="/login"
                   className="hover:text-foreground transition-colors"
                 >
-                  Dashboard
+                  Login
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/register"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Register
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/products"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Products
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/mobile-apps"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Mobile Apps
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/contact"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Contact
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/sitemap"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Sitemap
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Products */}
+          <div>
+            <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-neon-cyan mb-4">
+              Products
+            </h4>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li>
+                <Link
+                  to="/products"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Starter Pack (₹1500)
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/products"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Growth Pack (₹3000)
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/products"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Pro Pack (₹5000)
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/products"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Elite Pack (₹8000)
                 </Link>
               </li>
             </ul>
@@ -122,20 +162,36 @@ export default function Footer() {
             </h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
+                <Link
+                  to="/contact"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Contact Us
+                </Link>
+              </li>
+              <li>
                 <a
                   href={`mailto:${supportEmail}`}
                   className="hover:text-foreground transition-colors"
                 >
-                  Contact Us
+                  Email Support
                 </a>
               </li>
               <li>
-                <a
-                  href="/#plans"
+                <Link
+                  to="/dashboard"
                   className="hover:text-foreground transition-colors"
                 >
-                  View Plans
-                </a>
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/mobile-apps"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Mobile Apps
+                </Link>
               </li>
             </ul>
           </div>
@@ -181,6 +237,44 @@ export default function Footer() {
           <span>
             &copy; {year} NeoChain Digital Store. All rights reserved.
           </span>
+          <nav className="flex flex-wrap gap-4" aria-label="Site navigation">
+            <Link to="/" className="hover:text-cyan-400 transition-colors">
+              Home
+            </Link>
+            <Link to="/login" className="hover:text-cyan-400 transition-colors">
+              Login
+            </Link>
+            <Link
+              to="/register"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Register
+            </Link>
+            <Link
+              to="/products"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Products
+            </Link>
+            <Link
+              to="/mobile-apps"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Mobile Apps
+            </Link>
+            <Link
+              to="/contact"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Contact
+            </Link>
+            <Link
+              to="/sitemap"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Sitemap
+            </Link>
+          </nav>
           <a
             href={caffeineLink}
             target="_blank"
